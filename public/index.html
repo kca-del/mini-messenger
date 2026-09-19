@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Liquid — мини-мессенджер</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --cyan:#00D9FF; --violet:#7C5CFF; --pink:#FF4D9D;
+  --green:#4ADE80; --gold:#F5C842; --red:#FF5B6E;
+  --text:#fff; --muted:rgba(255,255,255,0.55);
+  --glass:rgba(255,255,255,0.06);
+  --glass-strong:rgba(255,255,255,0.1);
+  --border:rgba(255,255,255,0.12);
+  --border-strong:rgba(255,255,255,0.22);
+}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  color:var(--text);background:#05060A;-webkit-font-smoothing:antialiased;
+}
+
+#bg{position:fixed;inset:0;z-index:-3;overflow:hidden}
+#bg::before{
+  content:'';position:absolute;inset:-50%;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(124,92,255,0.55), transparent 42%),
+    radial-gradient(circle at 80% 20%, rgba(0,217,255,0.4), transparent 42%),
+    radial-gradient(circle at 50% 80%, rgba(255,77,157,0.45), transparent 42%),
+    radial-gradient(circle at 90% 90%, rgba(74,222,128,0.3), transparent 42%);
+  filter:blur(80px);
+  animation:bgFloat 25s ease-in-out infinite;
+}
+@keyframes bgFloat{
+  0%,100%{transform:translate(0,0) rotate(0deg) scale(1)}
+  33%{transform:translate(3%,-2%) rotate(4deg) scale(1.05)}
+  66%{transform:translate(-2%,3%) rotate(-3deg) scale(0.98)}
+}
+.bubble{
+  position:absolute;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%,rgba(255,255,255,0.35),rgba(255,255,255,0.02));
+  filter:blur(2px);pointer-events:none;
+  animation:rise linear infinite;
+}
+@keyframes rise{
+  0%{transform:translateY(110vh) scale(0.6);opacity:0}
+  10%{opacity:0.6}
+  90%{opacity:0.6}
+  100%{transform:translateY(-10vh) scale(1.1);opacity:0}
+}
+
+.glass{
+  background:var(--glass);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--border);
+  box-shadow:0 8px 32px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.glass-strong{
+  background:var(--glass-strong);
+  backdrop-filter:blur(32px) saturate(200%);
+  -webkit-backdrop-filter:blur(32px) saturate(200%);
+  border:1px solid var(--border-strong);
+  box-shadow:0 12px 40px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+.screen{position:fixed;inset:0;display:none;overflow:hidden;z-index:1}
+.screen.active{display:flex}
+.screen.fade-in{animation:fadeIn 0.5s cubic-bezier(0.25,0.46,0.45,0.94)}
+@keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
+
+#authScreen{align-items:center;justify-content:center;padding:2rem}
+.auth-card{
+  width:100%;max-width:440px;border-radius:28px;
+  padding:2.5rem;position:relative;overflow:hidden;
+  animation:cardIn 0.8s cubic-bezier(0.25,0.46,0.45,0.94);
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+.auth-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent);
+}
+.auth-logo{
+  width:72px;height:72px;border-radius:22px;
+  background:linear-gradient(135deg,var(--violet),var(--cyan));
+  display:flex;align-items:center;justify-content:center;
+  font-size:2rem;color:#fff;margin:0 auto 1.2rem;
+  box-shadow:0 15px 40px rgba(124,92,255,0.5),inset 0 1px 0 rgba(255,255,255,0.3);
+  animation:logoFloat 4s ease-in-out infinite;
+}
+@keyframes logoFloat{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-6px) rotate(4deg)}}
+.auth-title{font-size:1.8rem;font-weight:600;text-align:center;margin-bottom:0.4rem}
+.auth-sub{text-align:center;color:var(--muted);font-size:0.9rem;margin-bottom:2rem}
+.auth-tabs{
+  display:flex;gap:0.3rem;background:rgba(0,0,0,0.3);
+  padding:0.3rem;border-radius:14px;margin-bottom:1.5rem;border:1px solid var(--border);
+}
+.auth-tabs button{
+  flex:1;background:transparent;border:none;color:var(--muted);
+  padding:0.7rem;border-radius:10px;cursor:pointer;
+  font-family:inherit;font-size:0.85rem;font-weight:500;transition:0.3s;
+}
+.auth-tabs button.active{
+  background:linear-gradient(135deg,var(--violet),var(--cyan));
+  color:#fff;font-weight:600;box-shadow:0 6px 20px rgba(124,92,255,0.4);
+}
+.auth-field{margin-bottom:1rem;position:relative}
+.auth-field label{
+  font-size:0.7rem;color:var(--muted);letter-spacing:1.5px;
+  text-transform:uppercase;display:block;margin-bottom:0.4rem;font-weight:500;
+}
+.auth-field input{
+  width:100%;background:rgba(0,0,0,0.3);border:1px solid var(--border);
+  padding:0.95rem 1.1rem;border-radius:12px;color:var(--text);
+  font-family:inherit;font-size:0.95rem;transition:0.3s;
+}
+.auth-field input::placeholder{color:rgba(255,255,255,0.25)}
+.auth-field input:focus{
+  outline:none;border-color:rgba(124,92,255,0.6);
+  background:rgba(0,0,0,0.5);
+  box-shadow:0 0 0 3px rgba(124,92,255,0.15);
+}
+.auth-btn{
+  width:100%;padding:1rem;
+  background:linear-gradient(135deg,var(--violet),var(--cyan));
+  border:none;border-radius:12px;color:#fff;
+  font-family:inherit;font-weight:600;font-size:0.95rem;
+  cursor:pointer;transition:0.3s;margin-top:0.5rem;
+  box-shadow:0 10px 30px rgba(124,92,255,0.4);
+  position:relative;overflow:hidden;
+}
+.auth-btn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);
+  transform:translateX(-100%);transition:0.6s;
+}
+.auth-btn:hover::before{transform:translateX(100%)}
+.auth-btn:hover{transform:translateY(-2px);box-shadow:0 15px 40px rgba(124,92,255,0.6)}
+.auth-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.auth-error{color:var(--red);font-size:0.82rem;text-align:center;min-height:1.2rem;margin-top:0.8rem}
+
+#appScreen{padding:0}
+.app-layout{display:flex;width:100%;height:100%;padding:1rem;gap:1rem}
+
+.sidebar{
+  width:340px;border-radius:24px;display:flex;flex-direction:column;
+  overflow:hidden;flex-shrink:0;
+}
+.sidebar-head{
+  padding:1.2rem;display:flex;align-items:center;gap:0.8rem;
+  border-bottom:1px solid var(--border);
+}
+.avatar{
+  width:44px;height:44px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:1.05rem;color:#fff;flex-shrink:0;
+  box-shadow:0 4px 15px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.3);
+  position:relative;
+}
+.avatar.online::before{
+  content:'';position:absolute;bottom:0;right:0;
+  width:12px;height:12px;border-radius:50%;
+  background:var(--green);border:2px solid #05060A;
+  box-shadow:0 0 10px var(--green);
+}
+.sidebar-head-info{flex:1;min-width:0}
+.sidebar-head-info .name{
+  font-weight:600;font-size:0.95rem;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sidebar-head-info .status{
+  font-size:0.72rem;color:var(--muted);letter-spacing:0.5px;
+  display:flex;align-items:center;gap:0.35rem;margin-top:0.15rem;
+}
+.status-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--green);box-shadow:0 0 8px var(--green);
+  animation:pulseDot 2s ease-in-out infinite;
+}
+@keyframes pulseDot{0%,100%{opacity:1}50%{opacity:0.4}}
+.icon-btn{
+  width:38px;height:38px;border-radius:12px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  color:var(--text);cursor:pointer;transition:0.3s;
+  display:flex;align-items:center;justify-content:center;font-size:0.9rem;
+}
+.icon-btn:hover{background:rgba(255,255,255,0.12);border-color:var(--border-strong);transform:translateY(-2px)}
+.icon-btn.danger:hover{color:var(--red);border-color:var(--red)}
+
+.contacts{flex:1;overflow-y:auto;padding:0.6rem}
+.contacts::-webkit-scrollbar{width:4px}
+.contacts::-webkit-scrollbar-track{background:transparent}
+.contacts::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px}
+
+.contact{
+  padding:0.8rem 0.9rem;border-radius:14px;
+  display:flex;align-items:center;gap:0.85rem;
+  cursor:pointer;transition:0.3s;margin-bottom:0.2rem;
+  border:1px solid transparent;
+}
+.contact:hover{background:rgba(255,255,255,0.05)}
+.contact.active{
+  background:linear-gradient(135deg,rgba(124,92,255,0.18),rgba(0,217,255,0.08));
+  border-color:rgba(124,92,255,0.3);
+}
+.contact-info{flex:1;min-width:0}
+.contact-name{
+  font-weight:500;font-size:0.9rem;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.contact-last{
+  font-size:0.75rem;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  margin-top:0.15rem;
+}
+.contact-meta{display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0}
+.contact-time{font-size:0.68rem;color:var(--muted)}
+.unread-badge{
+  min-width:20px;height:20px;border-radius:10px;padding:0 6px;
+  background:linear-gradient(135deg,var(--pink),var(--violet));
+  color:#fff;font-size:0.68rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+
+.chat{
+  flex:1;border-radius:24px;display:flex;flex-direction:column;
+  overflow:hidden;position:relative;min-width:0;
+}
+.chat-empty{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:1rem;color:var(--muted);text-align:center;padding:2rem;
+}
+.chat-empty i{font-size:3rem;opacity:0.3}
+.chat-empty h3{font-size:1.2rem;color:var(--text);font-weight:500}
+.chat-empty p{font-size:0.9rem;max-width:280px}
+
+.chat-head{
+  padding:1rem 1.4rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:0.9rem;
+}
+.chat-head .avatar{width:40px;height:40px;font-size:0.95rem}
+.chat-head-info{flex:1;min-width:0}
+.chat-head-info .name{
+  font-weight:600;font-size:0.95rem;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.chat-head-info .sub{
+  font-size:0.72rem;color:var(--muted);margin-top:0.1rem;
+  display:flex;align-items:center;gap:0.35rem;
+}
+.chat-head-info .sub.online{color:var(--green)}
+
+.chat-messages{
+  flex:1;overflow-y:auto;padding:1.5rem 1.4rem;
+  display:flex;flex-direction:column;gap:0.6rem;
+}
+.chat-messages::-webkit-scrollbar{width:5px}
+.chat-messages::-webkit-scrollbar-track{background:transparent}
+.chat-messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:5px}
+
+.msg{
+  max-width:75%;padding:0.7rem 1rem;border-radius:18px;
+  font-size:0.92rem;line-height:1.5;word-wrap:break-word;
+  animation:msgIn 0.35s cubic-bezier(0.25,0.46,0.45,0.94);
+}
+@keyframes msgIn{
+  from{opacity:0;transform:translateY(8px) scale(0.98)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+.msg.mine{
+  align-self:flex-end;
+  background:linear-gradient(135deg,var(--violet),#5B3FE0);
+  color:#fff;border-bottom-right-radius:6px;
+  box-shadow:0 6px 18px rgba(124,92,255,0.35);
+}
+.msg.theirs{
+  align-self:flex-start;
+  background:rgba(255,255,255,0.08);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid var(--border);
+  color:var(--text);border-bottom-left-radius:6px;
+}
+.msg-time{
+  font-size:0.65rem;opacity:0.7;margin-top:0.3rem;text-align:right;
+}
+.msg-system{
+  align-self:center;font-size:0.75rem;color:var(--muted);
+  background:rgba(0,0,0,0.3);padding:0.35rem 0.9rem;
+  border-radius:20px;letter-spacing:0.5px;
+}
+
+.typing-indicator{
+  display:none;align-items:center;gap:0.5rem;
+  padding:0.4rem 1.4rem;font-size:0.75rem;color:var(--muted);
+}
+.typing-indicator.show{display:flex}
+.typing-dots{display:inline-flex;gap:0.2rem}
+.typing-dots span{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--cyan);animation:typingWave 1.2s ease-in-out infinite;
+}
+.typing-dots span:nth-child(2){animation-delay:0.15s}
+.typing-dots span:nth-child(3){animation-delay:0.3s}
+@keyframes typingWave{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-4px);opacity:1}}
+
+.chat-input{
+  padding:1rem 1.2rem;border-top:1px solid var(--border);
+  display:flex;gap:0.6rem;align-items:flex-end;
+}
+.chat-input textarea{
+  flex:1;background:rgba(0,0,0,0.3);border:1px solid var(--border);
+  padding:0.75rem 1rem;border-radius:16px;color:var(--text);
+  font-family:inherit;font-size:0.92rem;resize:none;
+  min-height:44px;max-height:120px;line-height:1.4;transition:0.3s;
+}
+.chat-input textarea:focus{
+  outline:none;border-color:rgba(124,92,255,0.6);
+  background:rgba(0,0,0,0.5);
+  box-shadow:0 0 0 3px rgba(124,92,255,0.15);
+}
+.chat-input textarea::placeholder{color:rgba(255,255,255,0.25)}
+.send-btn{
+  width:44px;height:44px;border-radius:14px;
+  background:linear-gradient(135deg,var(--violet),var(--cyan));
+  border:none;color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;transition:0.3s;flex-shrink:0;
+}
+.send-btn:hover{transform:translateY(-2px);box-shadow:0 10px 25px rgba(124,92,255,0.6)}
+
+.call-btn-head{
+  width:44px;height:44px;border-radius:14px;
+  background:linear-gradient(135deg,var(--green),#22B85A);
+  border:none;color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;transition:0.3s;flex-shrink:0;
+  animation:callPulse 2.5s ease-in-out infinite;
+}
+@keyframes callPulse{
+  0%,100%{box-shadow:0 6px 18px rgba(74,222,128,0.4),0 0 0 0 rgba(74,222,128,0.4)}
+  50%{box-shadow:0 6px 18px rgba(74,222,128,0.7),0 0 0 12px rgba(74,222,128,0)}
+}
+
+.overlay{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(0,0,0,0.75);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  display:none;align-items:center;justify-content:center;
+  padding:2rem;animation:fadeIn 0.4s;
+}
+.overlay.active{display:flex}
+
+.call-card{
+  width:100%;max-width:420px;border-radius:32px;
+  padding:2.5rem 2rem;text-align:center;
+  position:relative;overflow:hidden;
+  animation:callIn 0.5s cubic-bezier(0.25,0.46,0.45,0.94);
+}
+@keyframes callIn{
+  from{opacity:0;transform:scale(0.9) translateY(30px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+.call-avatar{
+  width:110px;height:110px;border-radius:50%;
+  margin:0 auto 1.5rem;display:flex;align-items:center;justify-content:center;
+  font-size:2.6rem;font-weight:600;color:#fff;position:relative;
+  box-shadow:0 20px 50px rgba(0,0,0,0.5),inset 0 2px 0 rgba(255,255,255,0.3);
+}
+.call-avatar::before,.call-avatar::after{
+  content:'';position:absolute;inset:-8px;border-radius:50%;
+  border:2px solid currentColor;opacity:0.3;
+  animation:ringPulse 2s ease-out infinite;
+}
+.call-avatar::after{animation-delay:0.7s}
+@keyframes ringPulse{
+  0%{transform:scale(1);opacity:0.5}
+  100%{transform:scale(1.4);opacity:0}
+}
+.call-name{font-size:1.5rem;font-weight:600;margin-bottom:0.4rem}
+.call-status{font-size:0.85rem;color:var(--muted);letter-spacing:0.8px;margin-bottom:2rem;min-height:1.2rem}
+.call-timer{font-size:1rem;color:var(--cyan);margin-bottom:1rem;letter-spacing:2px;font-weight:600}
+.call-actions{display:flex;gap:0.8rem;justify-content:center}
+.call-btn{
+  width:64px;height:64px;border-radius:22px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.3rem;color:#fff;transition:0.3s;
+}
+.call-btn.accept{
+  background:linear-gradient(135deg,var(--green),#22B85A);
+  box-shadow:0 10px 25px rgba(74,222,128,0.5);
+  animation:acceptPulse 2s ease-in-out infinite;
+}
+@keyframes acceptPulse{
+  0%,100%{box-shadow:0 10px 25px rgba(74,222,128,0.5)}
+  50%{box-shadow:0 10px 40px rgba(74,222,128,0.95)}
+}
+.call-btn.decline{background:linear-gradient(135deg,var(--red),#D63D50);box-shadow:0 10px 25px rgba(255,91,110,0.5)}
+.call-btn.mute{background:rgba(255,255,255,0.1);border:1px solid var(--border-strong);backdrop-filter:blur(20px)}
+.call-btn.mute.muted{background:linear-gradient(135deg,var(--red),#D63D50);border-color:transparent}
+.call-btn:hover{transform:translateY(-3px)}
+
+.video-wrap{position:absolute;inset:0;background:#000;border-radius:32px;overflow:hidden;display:none}
+.video-wrap.show{display:block}
+.video-wrap video{position:absolute;width:100%;height:100%;object-fit:cover}
+.video-wrap .remote-video{z-index:1}
+.video-wrap .local-video{
+  width:120px;height:160px;bottom:1rem;right:1rem;
+  border-radius:16px;border:2px solid rgba(255,255,255,0.3);
+  z-index:3;box-shadow:0 10px 30px rgba(0,0,0,0.6);
+}
+.video-wrap .call-overlay{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:2rem 1rem 1.5rem;z-index:2;
+  background:linear-gradient(to top,rgba(0,0,0,0.9),transparent);
+  text-align:center;
+}
+
+.toast{
+  position:fixed;bottom:2rem;left:50%;
+  transform:translateX(-50%) translateY(120px);
+  padding:0.9rem 1.5rem;border-radius:16px;
+  font-size:0.88rem;z-index:500;
+  opacity:0;transition:0.5s cubic-bezier(0.25,0.46,0.45,0.94);
+  display:flex;align-items:center;gap:0.7rem;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.empty-list{padding:2rem 1rem;text-align:center;color:var(--muted);font-size:0.85rem}
+.empty-list i{font-size:1.8rem;opacity:0.3;display:block;margin-bottom:0.6rem}
+
+@media(max-width:760px){
+  .app-layout{padding:0;gap:0}
+  .sidebar{
+    width:100%;border-radius:0;
+    position:absolute;inset:0;z-index:10;
+    transition:transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94);
+  }
+  .sidebar.hidden{transform:translateX(-100%)}
+  .chat{border-radius:0;position:absolute;inset:0;z-index:5}
+  .back-btn{display:flex !important}
+}
+.back-btn{
+  display:none;width:38px;height:38px;border-radius:12px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  color:var(--text);cursor:pointer;
+  align-items:center;justify-content:center;font-size:0.9rem;flex-shrink:0;
+}
+.call-talking {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(74,222,128,0.15);
+  border: 1px solid rgba(74,222,128,0.35);
+  border-radius: 20px;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+.call-talking.active {
+  display: flex;
+}
+.talking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: talkingWave 1s ease-in-out infinite;
+}
+.talking-dot:nth-child(2) { animation-delay: 0.15s; }
+.talking-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes talkingWave {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-4px); opacity: 1; }
+}
+.talking-label {
+  font-size: 0.75rem;
+  color: var(--green);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-left: 0.3rem;
+}
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+
+<div class="screen active" id="authScreen">
+  <div class="auth-card glass-strong">
+    <div class="auth-logo"><i class="fas fa-comment-dots"></i></div>
+    <h1 class="auth-title" id="authTitle">Создать аккаунт</h1>
+    <p class="auth-sub">Присоединяйся к Liquid</p>
+
+    <div class="auth-tabs">
+      <button class="active" data-tab="register">Регистрация</button>
+      <button data-tab="login">Вход</button>
+    </div>
+
+    <form id="authForm" onsubmit="return false;">
+      <div class="auth-field" id="fieldDisplay">
+        <label>Отображаемое имя</label>
+        <input type="text" id="inpDisplay" placeholder="Как тебя звать?" maxlength="40" autocomplete="off">
+      </div>
+      <div class="auth-field">
+        <label>Логин</label>
+        <input type="text" id="inpUsername" placeholder="латиница, 3–20 символов" maxlength="20" autocomplete="off">
+      </div>
+      <div class="auth-field">
+        <label>Пароль</label>
+        <input type="password" id="inpPassword" placeholder="минимум 4 символа" autocomplete="off">
+      </div>
+      <button class="auth-btn" id="authSubmit" type="submit">Создать аккаунт</button>
+      <div class="auth-error" id="authError"></div>
+    </form>
+  </div>
+</div>
+
+<div class="screen" id="appScreen">
+  <div class="app-layout">
+
+    <aside class="sidebar glass-strong" id="sidebar">
+      <div class="sidebar-head">
+        <div class="avatar" id="myAvatar">U</div>
+        <div class="sidebar-head-info">
+          <div class="name" id="myName">—</div>
+          <div class="status">
+            <span class="status-dot"></span>
+            онлайн
+          </div>
+        </div>
+        <button class="icon-btn danger" id="logoutBtn" title="Выйти">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+
+      <div class="contacts" id="contactsList">
+        <div class="empty-list">
+          <i class="fas fa-user-friends"></i>
+          Загружаем пользователей…
+        </div>
+      </div>
+    </aside>
+
+    <main class="chat glass-strong" id="chatArea">
+      <div class="chat-empty" id="chatEmpty">
+        <i class="fas fa-comments"></i>
+        <h3>Выбери собеседника</h3>
+        <p>Нажми на любого пользователя слева, чтобы начать переписку или позвонить.</p>
+      </div>
+
+      <div id="chatActive" style="display:none;width:100%;height:100%;flex-direction:column">
+        <div class="chat-head">
+          <button class="back-btn" id="backBtn">
+            <i class="fas fa-arrow-left"></i>
+          </button>
+          <div class="avatar" id="chatAvatar">?</div>
+          <div class="chat-head-info">
+            <div class="name" id="chatName">—</div>
+            <div class="sub" id="chatSub">—</div>
+          </div>
+          <button class="call-btn-head" id="callAudioBtn" title="Аудиозвонок">
+            <i class="fas fa-phone"></i>
+          </button>
+          <button class="call-btn-head" id="callVideoBtn" title="Видеозвонок" style="background:linear-gradient(135deg,var(--violet),#5B3FE0);animation-delay:0.5s">
+            <i class="fas fa-video"></i>
+          </button>
+        </div>
+
+        <div class="chat-messages" id="messagesList"></div>
+        <div class="typing-indicator" id="typingIndicator">
+          <span id="typingName"></span>
+          <span class="typing-dots">
+            <span></span><span></span><span></span>
+          </span>
+        </div>
+
+        <div class="chat-input">
+          <textarea id="messageInput" placeholder="Написать сообщение…" rows="1"></textarea>
+          <button class="send-btn" id="sendBtn">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </div>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<div class="overlay" id="incomingCall">
+  <div class="call-card glass-strong">
+    <div class="call-avatar" id="incomingAvatar">A</div>
+    <div class="call-name" id="incomingName">—</div>
+    <div class="call-status" id="incomingStatus">Входящий звонок…</div>
+    <div class="call-actions">
+      <button class="call-btn decline" id="declineBtn">
+        <i class="fas fa-phone-slash"></i>
+      </button>
+      <button class="call-btn accept" id="acceptBtn">
+        <i class="fas fa-phone"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="activeCall">
+  <div class="call-card glass-strong" id="activeCallCard">
+    <div class="video-wrap" id="videoWrap">
+      <video class="remote-video" id="remoteVideo" autoplay playsinline></video>
+      <video class="local-video" id="localVideo" autoplay playsinline muted></video>
+      <div class="call-overlay">
+        <div class="call-name" id="videoName">—</div>
+        <div class="call-timer" id="videoTimer">00:00</div>
+      </div>
+    </div>
+
+    <div id="audioCallUI">
+      <div class="call-avatar" id="activeAvatar">A</div>
+      <div class="call-name" id="activeName">—</div>
+      <div class="call-timer" id="callTimer">00:00</div>
+      <div class="call-status" id="callStatus">Соединение…</div>
+  <div class="call-talking" id="callTalking">
+    <span class="talking-dot"></span>
+    <span class="talking-dot"></span>
+    <span class="talking-dot"></span>
+    <span class="talking-label">говорит</span>
+  </div>
+      <div class="call-actions">
+        <button class="call-btn mute" id="muteBtn" title="Микрофон">
+          <i class="fas fa-microphone"></i>
+        </button>
+        <button class="call-btn mute" id="camBtn" title="Камера" style="display:none">
+          <i class="fas fa-video"></i>
+        </button>
+        <button class="call-btn decline" id="hangupBtn" title="Завершить">
+          <i class="fas fa-phone-slash"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast glass-strong" id="toast">
+  <i class="fas fa-check-circle" style="color:var(--green)"></i>
+  <span id="toastText">Готово</span>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+/* ============================================================
+   СОСТОЯНИЕ — все поля объявлены сразу
+============================================================ */
+const state = {
+  token: localStorage.getItem('msgr_token') || null,
+  me: null,
+  users: [],
+  onlineIds: new Set(),
+  activeChat: null,
+  socket: null,
+  typingTimer: null,
+  lastTypingSent: 0,
+  lastMessages: {}   // ← инициализировано здесь
+};
+
+const $ = id => document.getElementById(id);
+
+/* ============================================================
+   ЗВУК
+============================================================ */
+const Sound = {
+  ctx: null,
+  init() {
+    if (!this.ctx) {
+      try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  tone(freq, duration, type = 'sine', vol = 0.1) {
+    this.init();
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.frequency.value = freq;
+    osc.type = type;
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(); osc.stop(this.ctx.currentTime + duration);
+  },
+  message() { this.tone(880, 0.08); setTimeout(() => this.tone(1320, 0.12), 80); },
+  send() { this.tone(660, 0.06); setTimeout(() => this.tone(990, 0.08), 50); },
+  connect() { this.tone(523, 0.12); setTimeout(() => this.tone(659, 0.12), 100); setTimeout(() => this.tone(784, 0.18), 200); },
+  end() { this.tone(500, 0.15); setTimeout(() => this.tone(350, 0.25), 120); },
+  click() { this.tone(1200, 0.03, 'sine', 0.05); },
+  ringTimer: null,
+  startRing() {
+    if (this.ringTimer) return;
+    const play = () => {
+      this.tone(880, 0.35, 'sine', 0.15);
+      setTimeout(() => this.tone(720, 0.35, 'sine', 0.15), 450);
+    };
+    play();
+    this.ringTimer = setInterval(play, 1800);
+  },
+  stopRing() {
+    if (this.ringTimer) { clearInterval(this.ringTimer); this.ringTimer = null; }
+  }
+};
+
+/* Фоновые пузыри */
+(function createBubbles() {
+  const bg = $('bg');
+  for (let i = 0; i < 12; i++) {
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    const size = 30 + Math.random() * 100;
+    b.style.width = size + 'px';
+    b.style.height = size + 'px';
+    b.style.left = Math.random() * 100 + '%';
+    b.style.animationDuration = (18 + Math.random() * 20) + 's';
+    b.style.animationDelay = (Math.random() * 15) + 's';
+    bg.appendChild(b);
+  }
+})();
+
+/* Toast */
+function toast(text, icon = 'check-circle', color = 'var(--green)') {
+  const t = $('toast');
+  $('toastText').textContent = text;
+  const ic = t.querySelector('i');
+  ic.className = 'fas fa-' + icon;
+  ic.style.color = color;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/* API */
+async function api(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (state.token) headers.Authorization = 'Bearer ' + state.token;
+  const res = await fetch(path, { ...options, headers });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+  if (!res.ok) throw new Error((data && data.error) || 'Ошибка сети');
+  return data;
+}
+
+/* ============================================================
+   AUTH UI
+============================================================ */
+let authMode = 'register';
+
+document.querySelectorAll('.auth-tabs button').forEach(btn => {
+  btn.onclick = () => {
+    Sound.init(); Sound.click();
+    authMode = btn.dataset.tab;
+    document.querySelectorAll('.auth-tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    $('authTitle').textContent = authMode === 'register' ? 'Создать аккаунт' : 'Войти в аккаунт';
+    $('authSubmit').textContent = authMode === 'register' ? 'Создать аккаунт' : 'Войти';
+    $('fieldDisplay').style.display = authMode === 'register' ? 'block' : 'none';
+    $('authError').textContent = '';
+  };
+});
+
+$('authForm').onsubmit = async (e) => {
+  e.preventDefault();
+  Sound.init();
+  const username = $('inpUsername').value.trim().toLowerCase();
+  const password = $('inpPassword').value;
+  const display = $('inpDisplay').value.trim();
+  const err = $('authError');
+  err.textContent = '';
+
+  $('authSubmit').disabled = true;
+  $('authSubmit').textContent = 'Загрузка…';
+
+  try {
+    const url = authMode === 'register' ? '/api/register' : '/api/login';
+    const body = authMode === 'register'
+      ? { username, password, displayName: display }
+      : { username, password };
+
+    const data = await api(url, { method: 'POST', body: JSON.stringify(body) });
+    state.token = data.token;
+    state.me = data.user;
+    localStorage.setItem('msgr_token', data.token);
+
+    Sound.connect();
+    enterApp();
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    $('authSubmit').disabled = false;
+    $('authSubmit').textContent = authMode === 'register' ? 'Создать аккаунт' : 'Войти';
+  }
+};
+
+['inpUsername','inpPassword','inpDisplay'].forEach(id => {
+  $(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $('authForm').requestSubmit(); }
+  });
+});
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active', 'fade-in'));
+  $(id).classList.add('active', 'fade-in');
+}
+
+/* ============================================================
+   APP INIT
+============================================================ */
+async function enterApp() {
+  if (!state.token) return showScreen('authScreen');
+
+  try {
+    const meData = await api('/api/me');
+    state.me = meData.user;
+  } catch {
+    state.token = null;
+    localStorage.removeItem('msgr_token');
+    return showScreen('authScreen');
+  }
+
+  showScreen('appScreen');
+
+  const initial = (state.me.displayName || state.me.username)[0].toUpperCase();
+  $('myAvatar').textContent = initial;
+  $('myAvatar').style.background = `linear-gradient(135deg,${state.me.color},#000)`;
+  $('myName').textContent = state.me.displayName;
+
+  // ВАЖНО: сначала сокет, потом пользователи
+  connectSocket();
+  await loadUsers();
+  bindCallButtons();
+}
+
+$('logoutBtn').onclick = () => {
+  Sound.click();
+  localStorage.removeItem('msgr_token');
+  if (state.socket) state.socket.disconnect();
+  location.reload();
+};
+
+async function loadUsers() {
+  try {
+    const data = await api('/api/users');
+    state.users = data.users;
+    renderContacts();
+  } catch (e) {
+    toast(e.message, 'exclamation-triangle', 'var(--red)');
+  }
+}
+
+function renderContacts() {
+  const list = $('contactsList');
+  if (!state.users.length) {
+    list.innerHTML = `<div class="empty-list"><i class="fas fa-user-friends"></i>Пока нет других пользователей.<br>Зарегистрируй второго в другом браузере.</div>`;
+    return;
+  }
+
+  const withLast = state.users.map(u => {
+    const last = (state.lastMessages && state.lastMessages[u.id]) ? state.lastMessages[u.id] : null;
+    return { u, last };
+  });
+
+  withLast.sort((a, b) => {
+    const ta = a.last ? a.last.createdAt : 0;
+    const tb = b.last ? b.last.createdAt : 0;
+    return tb - ta;
+  });
+
+  list.innerHTML = withLast.map(({ u, last }) => {
+    const online = state.onlineIds.has(u.id);
+    const initial = (u.displayName || u.username)[0].toUpperCase();
+    const lastText = last
+      ? (last.fromId === state.me.id ? 'Ты: ' : '') + escapeHtml(last.text.slice(0, 40))
+      : 'Начать диалог';
+    const time = last ? formatTime(last.createdAt) : '';
+    const active = state.activeChat === u.id ? 'active' : '';
+    const unread = (last && last._unread) ? last._unread : 0;
+
+    return `
+      <div class="contact ${active}" data-uid="${u.id}">
+        <div class="avatar ${online ? 'online' : ''}" style="background:linear-gradient(135deg,${u.color},#000)">${initial}</div>
+        <div class="contact-info">
+          <div class="contact-name">${escapeHtml(u.displayName)}</div>
+          <div class="contact-last">${lastText}</div>
+        </div>
+        <div class="contact-meta">
+          ${time ? `<div class="contact-time">${time}</div>` : ''}
+          ${unread ? `<div class="unread-badge">${unread}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.contact').forEach(el => {
+    el.onclick = () => openChat(Number(el.dataset.uid));
+  });
+}
+
+async function openChat(userId) {
+  Sound.click();
+  const user = state.users.find(u => u.id === userId);
+  if (!user) return;
+  state.activeChat = user;
+
+  if (state.lastMessages && state.lastMessages[userId]) {
+    state.lastMessages[userId]._unread = 0;
+  }
+  state.socket.emit('message:read', { from: userId });
+
+  const initial = (user.displayName || user.username)[0].toUpperCase();
+  $('chatAvatar').textContent = initial;
+  $('chatAvatar').style.background = `linear-gradient(135deg,${user.color},#000)`;
+  $('chatName').textContent = user.displayName;
+  updateChatStatus();
+
+  $('chatEmpty').style.display = 'none';
+  $('chatActive').style.display = 'flex';
+
+  $('messagesList').innerHTML = `<div class="msg-system">Загрузка…</div>`;
+  try {
+    const data = await api('/api/messages/' + userId);
+    renderMessages(data.messages);
+  } catch (e) {
+    $('messagesList').innerHTML = `<div class="msg-system" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
+
+  if (window.innerWidth <= 760) $('sidebar').classList.add('hidden');
+  renderContacts();
+
+  setTimeout(() => $('messageInput').focus(), 200);
+}
+
+function updateChatStatus() {
+  if (!state.activeChat) return;
+  const online = state.onlineIds.has(state.activeChat.id);
+  const sub = $('chatSub');
+  sub.classList.toggle('online', online);
+  sub.innerHTML = online
+    ? `<span class="status-dot" style="width:6px;height:6px"></span> онлайн`
+    : `был(а) ${formatTime(state.activeChat.lastSeen)}`;
+}
+
+function renderMessages(messages) {
+  const list = $('messagesList');
+  if (!messages.length) {
+    list.innerHTML = `<div class="msg-system">Начало диалога</div>`;
+    return;
+  }
+  list.innerHTML = messages.map(m => renderMessageHtml(m)).join('');
+  scrollMessages();
+}
+
+function renderMessageHtml(m) {
+  const mine = m.fromId === state.me.id;
+  const time = new Date(m.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `<div class="msg ${mine ? 'mine' : 'theirs'}">${escapeHtml(m.text)}<div class="msg-time">${time}</div></div>`;
+}
+
+function appendMessage(m) {
+  const list = $('messagesList');
+  const sys = list.querySelector('.msg-system');
+  if (sys && !list.querySelector('.msg')) sys.remove();
+  list.insertAdjacentHTML('beforeend', renderMessageHtml(m));
+  scrollMessages();
+}
+
+function scrollMessages() {
+  const list = $('messagesList');
+  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+}
+
+$('sendBtn').onclick = sendMessage;
+$('messageInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+$('messageInput').addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+
+  if (state.activeChat && state.socket) {
+    const now = Date.now();
+    if (now - state.lastTypingSent > 2000) {
+      state.socket.emit('typing', { to: state.activeChat.id, isTyping: true });
+      state.lastTypingSent = now;
+    }
+    clearTimeout(state.typingTimer);
+    state.typingTimer = setTimeout(() => {
+      state.socket.emit('typing', { to: state.activeChat.id, isTyping: false });
+      state.lastTypingSent = 0;
+    }, 2000);
+  }
+});
+
+function sendMessage() {
+  const inp = $('messageInput');
+  const text = inp.value.trim();
+  if (!text || !state.activeChat || !state.socket) return;
+
+  state.socket.emit('message:send', { to: state.activeChat.id, text }, (resp) => {
+    if (resp && resp.error) {
+      toast(resp.error, 'exclamation-triangle', 'var(--red)');
+    } else {
+      Sound.send();
+    }
+  });
+
+  inp.value = '';
+  inp.style.height = 'auto';
+  state.socket.emit('typing', { to: state.activeChat.id, isTyping: false });
+  state.lastTypingSent = 0;
+}
+
+$('backBtn').onclick = () => {
+  $('sidebar').classList.remove('hidden');
+};
+
+/* ============================================================
+   SOCKET
+============================================================ */
+function connectSocket() {
+  state.socket = io({ auth: { token: state.token } });
+
+  state.socket.on('connect_error', (err) => {
+    console.error('socket error', err.message);
+    if (err.message === 'unauthorized') {
+      localStorage.removeItem('msgr_token');
+      location.reload();
+    }
+  });
+
+  state.socket.on('online:list', (ids) => {
+    state.onlineIds = new Set(ids);
+    renderContacts();
+    updateChatStatus();
+  });
+
+  state.socket.on('user:online', ({ id }) => {
+    state.onlineIds.add(id);
+    renderContacts();
+    updateChatStatus();
+  });
+
+  state.socket.on('user:offline', ({ id }) => {
+    state.onlineIds.delete(id);
+    const u = state.users.find(x => x.id === id);
+    if (u) u.lastSeen = Date.now();
+    renderContacts();
+    updateChatStatus();
+  });
+
+  state.socket.on('message:new', (msg) => {
+    const otherId = msg.fromId === state.me.id ? msg.toId : msg.fromId;
+    const isCurrentChat = state.activeChat && (
+      (msg.fromId === state.activeChat.id && msg.toId === state.me.id) ||
+      (msg.toId === state.activeChat.id && msg.fromId === state.me.id)
+    );
+
+    if (!state.lastMessages[otherId]) state.lastMessages[otherId] = {};
+    Object.assign(state.lastMessages[otherId], msg);
+
+    if (msg.fromId !== state.me.id) {
+      if (isCurrentChat) {
+        appendMessage(msg);
+        state.socket.emit('message:read', { from: msg.fromId });
+      } else {
+        state.lastMessages[otherId]._unread = (state.lastMessages[otherId]._unread || 0) + 1;
+        Sound.message();
+      }
+    } else {
+      appendMessage(msg);
+    }
+    renderContacts();
+  });
+
+  state.socket.on('typing', ({ from, isTyping }) => {
+    if (!state.activeChat || state.activeChat.id !== from) return;
+    const ind = $('typingIndicator');
+    const u = state.users.find(x => x.id === from);
+    if (isTyping && u) {
+      $('typingName').textContent = u.displayName + ' печатает';
+      ind.classList.add('show');
+      scrollMessages();
+    } else {
+      ind.classList.remove('show');
+    }
+  });
+
+  state.socket.on('call:incoming', ({ from, fromUser, video }) => {
+    Call.handleIncoming(from, fromUser, video);
+  });
+  state.socket.on('call:accepted', ({ from }) => Call.handleAccepted(from));
+  state.socket.on('call:rejected', ({ from }) => Call.handleRejected(from));
+  state.socket.on('call:unavailable', () => Call.handleUnavailable());
+  state.socket.on('call:ended', ({ from }) => Call.handleEnded(from));
+  state.socket.on('call:signal', ({ from, data }) => Call.handleSignal(from, data));
+}
+
+/* ============================================================
+   WEBRTC
+============================================================ */
+const Call = {
+  pc: null,
+  localStream: null,
+  remoteStream: null,
+  peerId: null,
+  peerUser: null,
+  isCaller: false,
+  isVideo: false,
+  timerInterval: null,
+  startTime: null,
+  muted: false,
+  camOff: false,
+  iceServers: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  },
+  pendingCandidates: [],
+  accepted: false,
+
+  async getMedia(video) {
+    if (this.localStream) return this.localStream;
+    try {
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: video ? { width: { ideal: 640 }, height: { ideal: 480 } } : false
+      });
+      return this.localStream;
+    } catch (e) {
+      toast('Нет доступа к ' + (video ? 'камере/микрофону' : 'микрофону'), 'microphone-slash', 'var(--red)');
+      throw e;
+    }
+  },
+
+  createPc() {
+    const pc = new RTCPeerConnection(this.iceServers);
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate && this.peerId) {
+        state.socket.emit('call:signal', { to: this.peerId, data: { type: 'ice', candidate: e.candidate } });
+      }
+    };
+
+    pc.ontrack = (e) => {
+      this.remoteStream = e.streams[0];
+      const rv = $('remoteVideo');
+      rv.srcObject = this.remoteStream;
+      if (this.isVideo) {
+        $('videoWrap').classList.add('show');
+        $('audioCallUI').style.display = 'none';
+      }
+      let audio = document.getElementById('remoteAudio');
+      if (!audio) {
+        audio = document.createElement('audio');
+        audio.id = 'remoteAudio';
+        audio.autoplay = true;
+        document.body.appendChild(audio);
+      }
+      audio.srcObject = this.remoteStream;
+      audio.play().catch(() => {});
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') this.onConnected();
+      else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') this.end(true);
+    };
+
+    return pc;
+  },
+
+  async start(userId, video) {
+    if (this.pc) { toast('Уже идёт звонок', 'exclamation-triangle', 'var(--gold)'); return; }
+    const user = state.users.find(u => u.id === userId);
+    if (!user) return;
+    if (!state.onlineIds.has(userId)) {
+      toast('Пользователь офлайн', 'user-slash', 'var(--red)');
+      return;
+    }
+
+    this.peerId = userId;
+    this.peerUser = user;
+    this.isCaller = true;
+    this.isVideo = !!video;
+
+    showActiveCall(user, video, 'Вызов…');
+
+    try { await this.getMedia(video); } catch { return this.cleanup(); }
+
+    this.pc = this.createPc();
+    this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
+
+    if (video) $('localVideo').srcObject = this.localStream;
+
+    state.socket.emit('call:invite', { to: userId, video: !!video });
+  },
+
+  handleIncoming(fromId, fromUser, video) {
+    if (this.pc) {
+      state.socket.emit('call:reject', { to: fromId });
+      return;
+    }
+    this.peerId = fromId;
+    this.peerUser = fromUser;
+    this.isCaller = false;
+    this.isVideo = !!video;
+
+    const initial = (fromUser.displayName || fromUser.username || '?')[0].toUpperCase();
+    $('incomingAvatar').textContent = initial;
+    $('incomingAvatar').style.background = `linear-gradient(135deg,${fromUser.color || '#7C5CFF'},#000)`;
+    $('incomingAvatar').style.color = fromUser.color || '#7C5CFF';
+    $('incomingName').textContent = fromUser.displayName || fromUser.username;
+    $('incomingStatus').textContent = video ? 'Видеозвонок…' : 'Входящий звонок…';
+    $('incomingCall').classList.add('active');
+    Sound.startRing();
+  },
+
+  async acceptIncoming() {
+    Sound.stopRing();
+    $('incomingCall').classList.remove('active');
+    if (!this.peerId) return;
+    this.accepted = true;
+    showActiveCall(this.peerUser, this.isVideo, 'Соединение…');
+    try { await this.getMedia(this.isVideo); } catch { return this.cleanup(); }
+    this.pc = this.createPc();
+    this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
+    if (this.isVideo) $('localVideo').srcObject = this.localStream;
+    state.socket.emit('call:accept', { to: this.peerId });
+  },
+
+  rejectIncoming() {
+    Sound.stopRing();
+    $('incomingCall').classList.remove('active');
+    if (this.peerId) state.socket.emit('call:reject', { to: this.peerId });
+    this.cleanup();
+  },
+
+  async handleAccepted(from) {
+    if (!this.pc || !this.isCaller) return;
+    this.accepted = true;
+    $('callStatus').textContent = 'Соединение…';
+    try {
+      const offer = await this.pc.createOffer();
+      await this.pc.setLocalDescription(offer);
+      state.socket.emit('call:signal', { to: this.peerId, data: { type: 'offer', sdp: offer } });
+    } catch (e) {
+      console.error('offer', e);
+      this.end();
+    }
+  },
+
+  async handleSignal(from, data) {
+        if (from !== this.peerId) return;
+
+    if (!this.pc) {
+      this.pendingSignals.push(data);
+      return;
+    }
+
+    if (data.type === 'ice' && !this.pc.remoteDescription) {
+      this.pendingCandidates.push(data.candidate);
+      return;
+    }
+    try {
+      if (data.type === 'offer') {
+        await this.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        state.socket.emit('call:signal', { to: this.peerId, data: { type: 'answer', sdp: answer } });
+        await this.flushPending();
+      } else if (data.type === 'answer') {
+        await this.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        await this.flushPending();
+      } else if (data.type === 'ice') {
+        if (this.pc.remoteDescription) {
+          try { await this.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch {}
+        } else {
+          this.pendingCandidates.push(data.candidate);
+        }
+      }
+    } catch (e) {
+      console.error('signal', e);
+    }
+  },
+
+  async flushPending() {
+    while (this.pendingCandidates.length) {
+      const c = this.pendingCandidates.shift();
+      try { await this.pc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+    }
+  },
+
+  handleRejected(from) {
+    if (from !== this.peerId) return;
+    Sound.end();
+    toast('Звонок отклонён', 'phone-slash', 'var(--red)');
+    this.cleanup();
+  },
+
+  handleUnavailable() {
+    Sound.end();
+    toast('Пользователь офлайн', 'user-slash', 'var(--red)');
+    this.cleanup();
+  },
+
+  handleEnded(from) {
+    if (this.peerId && from !== this.peerId) return;
+    Sound.end();
+    this.cleanup();
+  },
+
+  onConnected() {
+    Sound.stopRing();
+    Sound.connect();
+    $('callStatus').textContent = this.isVideo ? '' : 'Разговор';
+    this.startTime = Date.now();
+    clearInterval(this.timerInterval);
+    this.timerInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - this.startTime) / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      const label = `${mm}:${ss}`;
+      $('callTimer').textContent = label;
+      $('videoTimer').textContent = label;
+    }, 500);
+  },
+
+  toggleMute() {
+    if (!this.localStream) return;
+    this.muted = !this.muted;
+    this.localStream.getAudioTracks().forEach(t => t.enabled = !this.muted);
+    const b = $('muteBtn');
+    b.classList.toggle('muted', this.muted);
+    b.innerHTML = this.muted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+    Sound.click();
+  },
+
+  toggleCam() {
+    if (!this.localStream) return;
+    this.camOff = !this.camOff;
+    this.localStream.getVideoTracks().forEach(t => t.enabled = !this.camOff);
+    const b = $('camBtn');
+    b.classList.toggle('muted', this.camOff);
+    b.innerHTML = this.camOff ? '<i class="fas fa-video-slash"></i>' : '<i class="fas fa-video"></i>';
+    Sound.click();
+  },
+
+  end(silent = false) {
+    if (!silent) Sound.end();
+    if (this.peerId) state.socket.emit('call:end', { to: this.peerId });
+    this.cleanup();
+  },
+
+  cleanup() {
+    clearInterval(this.timerInterval);
+    this.timerInterval = null;
+    if (this.pc) { try { this.pc.close(); } catch {} this.pc = null; }
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(t => t.stop());
+      this.localStream = null;
+    }
+    this.remoteStream = null;
+    this.pendingCandidates = [];
+
+    $('activeCall').classList.remove('active');
+    $('incomingCall').classList.remove('active');
+    $('videoWrap').classList.remove('show');
+    $('audioCallUI').style.display = '';
+    $('callTimer').textContent = '00:00';
+    $('videoTimer').textContent = '00:00';
+    $('callStatus').textContent = 'Соединение…';
+    $('localVideo').srcObject = null;
+    $('remoteVideo').srcObject = null;
+    const ra = document.getElementById('remoteAudio');
+    if (ra) ra.srcObject = null;
+
+    const b = $('muteBtn');
+    b.classList.remove('muted');
+    b.innerHTML = '<i class="fas fa-microphone"></i>';
+    this.muted = false;
+    this.camOff = false;
+
+    Sound.stopRing();
+    this.peerId = null;
+    this.peerUser = null;
+    this.isCaller = false;
+    this.accepted = false;
+  }
+};
+
+function showActiveCall(user, video, statusText) {
+  const initial = (user.displayName || user.username || '?')[0].toUpperCase();
+  $('activeAvatar').textContent = initial;
+  $('activeAvatar').style.background = `linear-gradient(135deg,${user.color || '#7C5CFF'},#000)`;
+  $('activeAvatar').style.color = user.color || '#7C5CFF';
+  $('activeName').textContent = user.displayName || user.username;
+  $('callStatus').textContent = statusText;
+  $('videoName').textContent = user.displayName || user.username;
+
+  if (video) {
+    $('videoWrap').classList.add('show');
+    $('audioCallUI').style.display = 'none';
+    $('camBtn').style.display = 'flex';
+  } else {
+    $('videoWrap').classList.remove('show');
+    $('audioCallUI').style.display = '';
+    $('camBtn').style.display = 'none';
+  }
+
+  $('activeCall').classList.add('active');
+}
+
+function bindCallButtons() {
+  $('callAudioBtn').onclick = () => {
+    Sound.click();
+    if (state.activeChat) Call.start(state.activeChat.id, false);
+  };
+  $('callVideoBtn').onclick = () => {
+    Sound.click();
+    if (state.activeChat) Call.start(state.activeChat.id, true);
+  };
+  $('acceptBtn').onclick = () => Call.acceptIncoming();
+  $('declineBtn').onclick = () => Call.rejectIncoming();
+  $('hangupBtn').onclick = () => Call.end();
+  $('muteBtn').onclick = () => Call.toggleMute();
+  $('camBtn').onclick = () => Call.toggleCam();
+}
+
+/* ============================================================
+   ХЕЛПЕРЫ
+============================================================ */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  }
+  const diff = now - d;
+  if (diff < 7 * 86400000) return d.toLocaleDateString('ru-RU', { weekday: 'short' });
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+/* СТАРТ */
+if (state.token) {
+  enterApp();
+} else {
+  showScreen('authScreen');
+}
+</script>
+</body>
+</html>
